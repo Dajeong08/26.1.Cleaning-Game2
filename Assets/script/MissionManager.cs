@@ -1,33 +1,32 @@
-using UnityEngine;
 using System.Collections.Generic;
-using UnityEngine.UI;
+using UnityEngine;
 
 public class MissionManager : MonoBehaviour
 {
     public static MissionManager Instance;
 
-    [Header("∆«≥⁄ π◊ UI º≥¡§")]
+    [Header("Panels")]
     public GameObject availablePanel;
     public GameObject completedPanel;
     public GameObject mMenuPanel;
     public Transform completedContent;
 
-    [Header("∫∏ªÛ ±›æ◊ º≥¡§")]
-    public int tutorialReward = 200;   // ∆©≈‰∏ÆæÛ ∫∏ªÛ (¿ŒΩ∫∆Â≈Õø°º≠ ºˆ¡§ ∞°¥…)
-    public int submarineReward = 1000; // ¿·ºˆ«‘ ∫∏ªÛ (¿ŒΩ∫∆Â≈Õø°º≠ ºˆ¡§ ∞°¥…)
+    [Header("Rewards")]
+    public int tutorialReward = 200;
+    public int submarineReward = 1000;
 
-    [Header("∆Æ∑°ƒø(øﬁ¬  ∏ÆΩ∫∆Æ) º≥¡§")]
+    [Header("Tracker")]
     public GameObject trackerPrefab;
     public Transform trackerParent;
 
-    private Dictionary<string, TrackerItem> activeTrackers = new Dictionary<string, TrackerItem>();
-    private Dictionary<string, MissionData> missionDatas = new Dictionary<string, MissionData>();
+    private readonly Dictionary<string, TrackerItem> activeTrackers = new Dictionary<string, TrackerItem>();
+    private readonly Dictionary<string, MissionData> missionDatas = new Dictionary<string, MissionData>();
 
-    [Header("πÃº« UI ƒ´µÂ")]
+    [Header("Mission Cards")]
     public GameObject tutorialJobCard;
     public GameObject submarineJobCard;
 
-    [Header("Ω«¡¶ ∏  ø¿∫Í¡ß∆Æ")]
+    [Header("Map Groups")]
     public GameObject tutorialMapGroup;
     public GameObject submarineMapGroup;
 
@@ -47,94 +46,76 @@ public class MissionManager : MonoBehaviour
 
     public void ShowAvailableJobs()
     {
-        if (availablePanel != null)
-        {
-            availablePanel.SetActive(true);
-            LayoutRebuilder.ForceRebuildLayoutImmediate(availablePanel.GetComponent<RectTransform>());
-        }
-
-        if (completedPanel != null)
-        {
-            completedPanel.SetActive(false);
-        }
-
-        Debug.Log("[Tab] '¡¯«‡ ∞°¥…' ≈«¿∏∑Œ ¿¸»Øµ ");
+        if (availablePanel != null) availablePanel.SetActive(true);
+        if (completedPanel != null) completedPanel.SetActive(false);
     }
 
     public void ShowCompletedTab()
     {
-        if (availablePanel != null)
-        {
-            availablePanel.SetActive(false);
-        }
-
-        if (completedPanel != null)
-        {
-            completedPanel.SetActive(true);
-            LayoutRebuilder.ForceRebuildLayoutImmediate(completedPanel.GetComponent<RectTransform>());
-        }
-
-        Debug.Log("[Tab] 'øœ∑·µ ' ≈«¿∏∑Œ ¿¸»Øµ ");
+        if (availablePanel != null) availablePanel.SetActive(false);
+        if (completedPanel != null) completedPanel.SetActive(true);
     }
 
-    public void HandleMissionClick(string mName, MissionData.MissionStatus mStatus)
+    public void HandleMissionClick(string missionName, MissionData.MissionStatus missionStatus)
     {
-        if (mStatus == MissionData.MissionStatus.ReadyToMove)
-        {
-            AcceptMission(mName);
-        }
+        if (missionStatus == MissionData.MissionStatus.ReadyToMove) AcceptMission(missionName);
     }
 
-    private void AcceptMission(string mName)
+    private void AcceptMission(string missionName)
     {
-        if (activeTrackers.ContainsKey(mName))
+        if (activeTrackers.ContainsKey(missionName))
         {
-            StartMapTransition(mName);
+            StartMapTransition(missionName);
             return;
         }
 
-        MissionData newData = new MissionData();
-        newData.missionName = mName;
-        newData.status = MissionData.MissionStatus.InProgress;
+        MissionData newData = new MissionData
+        {
+            missionName = missionName,
+            status = MissionData.MissionStatus.InProgress
+        };
 
+        string lowerName = missionName.ToLower();
         GameObject mapGroup = null;
-        string lowerName = mName.ToLower();
 
         if (lowerName.Contains("tutorial"))
+        {
             mapGroup = tutorialMapGroup;
+            newData.rewardCoin = tutorialReward;
+        }
         else if (lowerName.Contains("newmap") || lowerName.Contains("sub"))
+        {
             mapGroup = submarineMapGroup;
+            newData.rewardCoin = submarineReward;
+        }
 
         if (mapGroup != null)
         {
             Trash[] trashes = mapGroup.GetComponentsInChildren<Trash>(true);
-            newData.totalTrash = trashes.Length;
-            newData.remainingTrash = trashes.Length;
+            Barnacle[] barnacles = mapGroup.GetComponentsInChildren<Barnacle>(true);
 
-            // [ºˆ¡§] ¿ßø°º≠ º≥¡§«— ∫∏ªÛ ∫Øºˆ∏¶ ¿˚øÎ
-            if (lowerName.Contains("tutorial"))
-                newData.rewardCoin = tutorialReward;
-            else
-                newData.rewardCoin = submarineReward;
+            int totalCollectibles = trashes.Length + barnacles.Length;
+            newData.totalTrash = totalCollectibles;
+            newData.remainingTrash = totalCollectibles;
+
+            Debug.Log($"{missionName} ÎØ∏ÏÖò ÏãúÏûë: ÏùºÎ∞ò Ïì∞Î†àÍ∏∞({trashes.Length}) + Îî∞Í∞úÎπÑ({barnacles.Length}) = Ï¥ù {totalCollectibles}Í∞ú");
         }
-        missionDatas[mName] = newData;
 
-        GameObject tObj = Instantiate(trackerPrefab, trackerParent);
-        tObj.SetActive(true);
-        TrackerItem script = tObj.GetComponent<TrackerItem>();
-        script.Setup(newData);
+        missionDatas[missionName] = newData;
 
-        activeTrackers[mName] = script;
+        GameObject trackerObject = Instantiate(trackerPrefab, trackerParent);
+        trackerObject.SetActive(true);
+        TrackerItem trackerItem = trackerObject.GetComponent<TrackerItem>();
+        trackerItem.Setup(newData);
+        activeTrackers[missionName] = trackerItem;
 
-        StartMapTransition(mName);
+        StartMapTransition(missionName);
     }
 
-    public void StartMapTransition(string mName)
+    public void StartMapTransition(string missionName)
     {
-        currentActiveMissionName = mName;
-        string lowerName = mName.ToLower();
-
-        Debug.Log($"[MissionManager] ¿Ãµø Ω√µµ«œ¥¬ πÃº« ¿Ã∏ß: '{mName}'");
+        currentActiveMissionName = missionName;
+        string lowerName = missionName.ToLower();
 
         if (tutorialMapGroup != null) tutorialMapGroup.SetActive(false);
         if (submarineMapGroup != null) submarineMapGroup.SetActive(false);
@@ -142,12 +123,11 @@ public class MissionManager : MonoBehaviour
         if (lowerName.Contains("tutorial"))
         {
             if (tutorialMapGroup != null) tutorialMapGroup.SetActive(true);
-            Debug.Log("Tutorial ∏  »∞º∫»≠ øœ∑·");
         }
         else if (lowerName.Contains("newmap") || lowerName.Contains("sub"))
         {
             if (submarineMapGroup != null) submarineMapGroup.SetActive(true);
-            Debug.Log("Submarine (NewMap) ∏  »∞º∫»≠ øœ∑·");
+            if (SubmarineManager.Instance != null) SubmarineManager.Instance.AppearSubmarine();
         }
 
         if (mMenuPanel != null) mMenuPanel.SetActive(false);
@@ -161,11 +141,11 @@ public class MissionManager : MonoBehaviour
             OnTrashPickedUp(currentActiveMissionName);
     }
 
-    public void OnTrashPickedUp(string mName)
+    public void OnTrashPickedUp(string missionName)
     {
-        if (!missionDatas.ContainsKey(mName)) return;
-        missionDatas[mName].remainingTrash--;
-        UpdateSpecificTrackerUI(mName);
+        if (!missionDatas.ContainsKey(missionName)) return;
+        missionDatas[missionName].remainingTrash--;
+        UpdateSpecificTrackerUI(missionName);
     }
 
     public void UpdateProgress(float progress)
@@ -174,58 +154,65 @@ public class MissionManager : MonoBehaviour
             UpdateProgress(currentActiveMissionName, progress);
     }
 
-    public void UpdateProgress(string mName, float progress)
+    public void UpdateProgress(string missionName, float progress)
     {
-        if (!missionDatas.ContainsKey(mName)) return;
-        missionDatas[mName].currentProgress = progress;
-        UpdateSpecificTrackerUI(mName);
+        if (!missionDatas.ContainsKey(missionName)) return;
+        missionDatas[missionName].currentProgress = progress;
+        UpdateSpecificTrackerUI(missionName);
     }
 
-    private void UpdateSpecificTrackerUI(string mName)
+    private void UpdateSpecificTrackerUI(string missionName)
     {
-        if (!activeTrackers.ContainsKey(mName)) return;
+        if (!activeTrackers.ContainsKey(missionName)) return;
 
-        MissionData data = missionDatas[mName];
-        string infoText = $"<b>{data.missionName}</b>\n" +
-                          $"≥≤¿∫ æ≤∑π±‚ ∞≥ºˆ : {data.remainingTrash}\n" +
-                          $"¥€±‚ ¡¯«‡µµ : {data.currentProgress:F1}%";
+        MissionData data = missionDatas[missionName];
+        string displayName = GetDisplayMissionName(data.missionName);
+        string infoText = $"<b>{displayName}</b>\n" +
+                          $"ÎÇ®ÏùÄ Îî∞Í∞úÎπÑ Í∞úÏàò : {data.remainingTrash}\n" +
+                          $"Îã¶Í∏∞ ÏßÑÌñâÎèÑ : {data.currentProgress:F1}%";
 
-        bool isAllDone = (data.remainingTrash <= 0) && (data.currentProgress >= 99.9f);
-        activeTrackers[mName].UpdateMissionStatus(infoText, isAllDone, data.rewardCoin);
+        bool isAllDone = data.remainingTrash <= 0 && data.currentProgress >= 99.0f;
+        activeTrackers[missionName].UpdateMissionStatus(infoText, isAllDone, data.rewardCoin);
     }
 
-    public void ClaimReward(string mName, int rewardAmount, GameObject trackerUI)
+    public void ClaimReward(string missionName, int rewardAmount, GameObject trackerUI)
     {
         if (CoinManager.instance != null)
         {
             CoinManager.instance.AddCoins(rewardAmount);
-            MoveToCompleted(mName);
-
-            if (activeTrackers.ContainsKey(mName)) activeTrackers.Remove(mName);
+            MoveToCompleted(missionName);
+            if (activeTrackers.ContainsKey(missionName)) activeTrackers.Remove(missionName);
             if (trackerUI != null) Destroy(trackerUI);
-            if (missionDatas.ContainsKey(mName)) missionDatas.Remove(mName);
-
-            if (currentActiveMissionName == mName) currentActiveMissionName = "";
+            if (missionDatas.ContainsKey(missionName)) missionDatas.Remove(missionName);
+            if (currentActiveMissionName == missionName) currentActiveMissionName = "";
         }
     }
 
-    public void MoveToCompleted(string mName)
+    public void MoveToCompleted(string missionName)
     {
-        string lowerName = mName.ToLower();
+        string lowerName = missionName.ToLower();
         GameObject cardTarget = null;
 
-        if (lowerName.Contains("tutorial"))
-            cardTarget = tutorialJobCard;
-        else if (lowerName.Contains("newmap") || lowerName.Contains("sub"))
-            cardTarget = submarineJobCard;
+        if (lowerName.Contains("tutorial")) cardTarget = tutorialJobCard;
+        else if (lowerName.Contains("newmap") || lowerName.Contains("sub")) cardTarget = submarineJobCard;
 
         if (cardTarget != null)
         {
             cardTarget.transform.SetParent(completedContent);
             cardTarget.transform.localScale = Vector3.one;
-
             JobItemUI itemUI = cardTarget.GetComponent<JobItemUI>();
             if (itemUI != null) itemUI.SetMissionCompleted();
         }
+    }
+
+    private string GetDisplayMissionName(string missionName)
+    {
+        if (string.IsNullOrEmpty(missionName)) return "ÏùòÎ¢∞";
+
+        string lowerName = missionName.ToLower();
+        if (lowerName.Contains("tutorial")) return "ÌäúÌÜ†Î¶¨Ïñº";
+        if (lowerName.Contains("newmap") || lowerName.Contains("sub")) return "Ïû†ÏàòÌï®";
+
+        return missionName;
     }
 }

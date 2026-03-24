@@ -1,143 +1,95 @@
 ﻿using System.Collections.Generic;
-
 using UnityEngine;
-
 using TMPro;
 
-
-
-/// <summary>
-
-/// 잠수함 전체 세척 진행도 관리.
-
-/// Update() 폴링 대신 이벤트 기반으로 동작 (성능 개선).
-
-/// </summary>
-
 public class SubmarineManager : MonoBehaviour
-
 {
+    public static SubmarineManager Instance; // 어디서든 부를 수 있게 이름표 추가
 
-    [Header("파트 리스트 (Inspector에서 껍데기 오브젝트들 드래그)")]
-
+    [Header("파트 리스트 (껍데기 오브젝트들 드래그)")]
     public List<SubmarinePart> allParts = new List<SubmarinePart>();
 
-
-
-    [Header("UI")]
-
-    public TextMeshProUGUI progressText;
-
-
+    [Header("잠수함 몸체 (의뢰 전엔 꺼둘 오브젝트)")]
+    public GameObject submarineBody;
 
     [Header("완료 판정 기준 (%)")]
-
     [Range(0f, 100f)]
-
     public float clearThreshold = 95f;
-
-
 
     private bool _isCleared = false;
 
-
+    void Awake()
+    {
+        Instance = this;
+        // 게임 시작 시 잠수함을 숨깁니다.
+        if (submarineBody != null) submarineBody.SetActive(false);
+    }
 
     void Start()
-
     {
-
-        // 각 파트의 진행도 변경 이벤트 구독
-
         foreach (var part in allParts)
-
             part.onProgressChanged += OnAnyPartChanged;
-
     }
 
-
+    // 의뢰 수령 시 호출될 함수
+    public void AppearSubmarine()
+    {
+        if (submarineBody != null) submarineBody.SetActive(true);
+    }
 
     private void OnAnyPartChanged()
-
     {
-
         if (allParts.Count == 0) return;
 
-
-
         float sum = 0f;
-
         foreach (var part in allParts)
-
             sum += part.partProgress;
 
+        // 1. 실제 평균 진행도 (예: 0% ~ 100%)
+        float realOverall = sum / allParts.Count;
 
+        // 2. [핵심] 퍼센트 뻥튀기 로직
+        // clearThreshold가 5%라면, 5%를 닦았을 때 유저에게는 100%로 보이게 만듭니다.
+        float displayProgress = (realOverall / clearThreshold) * 100f;
 
-        float overall = sum / allParts.Count;
+        // 100%를 넘지 않게 고정
+        displayProgress = Mathf.Clamp(displayProgress, 0f, 100f);
 
-
-
-        // UI 업데이트
-
-        if (progressText != null)
-
-            progressText.text = $"잠수함 세척도: {overall:F1}%";
-
-
-
-        // MissionManager 연동 (DirtPainter와 동일한 방식)
-
+        // 3. UI와 MissionManager에는 '뻥튀기 된' 퍼센트를 전달
         if (MissionManager.Instance != null)
+            MissionManager.Instance.UpdateProgress(displayProgress);
 
-            MissionManager.Instance.UpdateProgress(overall);
-
-
-
-        // 완료 판정
-
-        if (!_isCleared && overall >= clearThreshold)
-
+        if (!_isCleared && displayProgress >= 100f)
         {
-
             _isCleared = true;
-
-            Debug.Log("🎉 잠수함 세척 완료!");
-
+            Debug.Log("🎉 잠수함 세척 완료 (보정치 적용)!");
         }
-
     }
+    // SubmarineManager.cs 내부에 추가
+    public void RefreshBarnacleCount()
+    {
+        if (MissionManager.Instance == null) return;
 
+        // 현재 잠수함의 모든 따개비를 다시 세기
+        Barnacle[] barnacles = GetComponentsInChildren<Barnacle>(true);
 
-
-    /// <summary>런타임 중 파트 동적 추가</summary>
+        // 현재 미션의 남은 개수를 강제로 맞춤 (이미 캔 것은 제외되어야 하므로 주의)
+        // 이 방법보다는 위의 MissionManager 수정 방식이 더 권장됩니다.
+    }
 
     public void RegisterPart(SubmarinePart part)
-
     {
-
         if (!allParts.Contains(part))
-
         {
-
             allParts.Add(part);
-
             part.onProgressChanged += OnAnyPartChanged;
-
         }
-
     }
-
-
 
     void OnDestroy()
-
     {
-
         foreach (var part in allParts)
-
             if (part != null)
-
                 part.onProgressChanged -= OnAnyPartChanged;
-
     }
-
 }

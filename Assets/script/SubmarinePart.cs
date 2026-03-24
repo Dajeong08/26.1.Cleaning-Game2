@@ -1,237 +1,138 @@
+using System.Collections;
 using UnityEngine;
 
-
-
-/// <summary>
-
-/// Àá¼öÇÔ ²®µ¥±â ¿ÀºêÁ§Æ® ÇÏ³ªÇÏ³ª¿¡ ºÙÀÌ´Â ½ºÅ©¸³Æ®.
-
-/// DirtPainter(Ä¸½¶¿ë)¿Í ¿ÏÀüÈ÷ ºĞ¸®µÈ Àá¼öÇÔ Àü¿ë ´Û±â ½Ã½ºÅÛ.
-
-/// </summary>
-
 [RequireComponent(typeof(Renderer))]
-
+[RequireComponent(typeof(Collider))]
 public class SubmarinePart : MonoBehaviour
-
 {
-
-    [Header("¸¶½ºÅ© ¼³Á¤")]
-
-    [Tooltip("¸¶½ºÅ© ÇØ»óµµ. Å¬¼ö·Ï Á¤¹ĞÇÏÁö¸¸ ¹«°Å¿ò (512 ±ÇÀå)")]
-
+    [Header("ë§ˆìŠ¤í¬ ì„¤ì •")]
     public int maskSize = 512;
 
-
-
-    // ¦¡¦¡ ³»ºÎ »óÅÂ ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
-
     private Texture2D _maskTex;
-
-    private Color32[] _pixels;       // Color32: Colorº¸´Ù ¸Ş¸ğ¸® Àı¹İ
-
+    private Color32[] _pixels;
     private Material _mat;
-
-    private bool _isDirty;      // Apply() ÇÊ¿ä ¿©ºÎ ÇÃ·¡±×
-
-
-
-    // ÁøÇàµµ °ü·Ã
+    private bool _isDirty;
 
     private int _totalPixels;
-
     private int _cleanedPixels;
 
-
-
-    /// <summary>0~100 »çÀÌ ¼¼Ã´ ÁøÇàµµ (%)</summary>
-
     [HideInInspector] public float partProgress = 0f;
-
-
-
-    /// <summary>ÁøÇàµµ º¯°æ ½Ã SubmarineManager¿¡ ¾Ë¸®´Â ÀÌº¥Æ®</summary>
-
     public System.Action onProgressChanged;
 
-
-
-    // ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
-
     void Start()
-
     {
-
         _mat = GetComponent<Renderer>().material;
 
-
-
-        // ¸¶½ºÅ© »ı¼º (ÀüºÎ °ËÁ¤ = ÀüºÎ ´õ·¯¿ò)
-
         _maskTex = new Texture2D(maskSize, maskSize, TextureFormat.R8, false);
-
         _pixels = new Color32[maskSize * maskSize];
 
-        // Color32(0,0,0,255): R=0(´õ·¯¿ò), Alpha´Â R8 Æ÷¸Ë¿¡¼­ »ç¿ë ¾È ÇÔ
-
         for (int i = 0; i < _pixels.Length; i++)
-
             _pixels[i] = new Color32(0, 0, 0, 255);
 
-
-
         _maskTex.SetPixels32(_pixels);
-
         _maskTex.Apply();
 
-
-
         _mat.SetTexture("_MaskTex", _maskTex);
-
         _totalPixels = maskSize * maskSize;
-
         _cleanedPixels = 0;
 
+        CalculateProgress();
     }
 
+    public void CleanByWorldPos(Vector3 worldPos, float worldRadius, float speed)
+    {
+        RaycastHit hit;
+        Vector3 direction = (worldPos - Camera.main.transform.position).normalized;
 
-
-    /// <summary>
-
-    /// PlayerMovement.HandleCleaning()¿¡¼­ È£Ãâ.
-
-    /// DirtPainter.Paint()¿Í µ¿ÀÏÇÑ ½Ã±×´ÏÃ³·Î ¸ÂÃã.
-
-    /// </summary>
+        if (Physics.Raycast(worldPos - direction * 0.5f, direction, out hit, 1.0f))
+        {
+            if (hit.collider.gameObject == gameObject)
+            {
+                float uvRadius = worldRadius * 0.02f;
+                Clean(hit.textureCoord, uvRadius, speed);
+            }
+        }
+    }
 
     public void Clean(Vector2 uv, float radius, float speed)
-
     {
-
         int cx = Mathf.RoundToInt(uv.x * (maskSize - 1));
-
         int cy = Mathf.RoundToInt(uv.y * (maskSize - 1));
-
         int r = Mathf.RoundToInt(radius * maskSize);
-
         int r2 = r * r;
-
-
-
-        // UV °æ°è ·çÇÁ Ã³¸® (DirtPainterÃ³·³ °¡ÀåÀÚ¸® ÀÌÀ½»õ ¹æÁö)
 
         PaintCircle(cx, cy, r, r2, speed);
 
         if (cx - r < 0) PaintCircle(cx + maskSize, cy, r, r2, speed);
-
         if (cx + r >= maskSize) PaintCircle(cx - maskSize, cy, r, r2, speed);
 
-
-
         if (_isDirty)
-
         {
-
             _maskTex.SetPixels32(_pixels);
-
             _maskTex.Apply();
-
             _isDirty = false;
 
-
-
             CalculateProgress();
-
-            onProgressChanged?.Invoke();
-
         }
-
     }
-
-
 
     private void PaintCircle(int cx, int cy, int r, int r2, float speed)
-
     {
-
         for (int dx = -r; dx <= r; dx++)
-
         {
-
             for (int dy = -r; dy <= r; dy++)
-
             {
-
                 if (dx * dx + dy * dy > r2) continue;
 
-
-
                 int px = cx + dx;
-
                 int py = cy + dy;
-
                 if (px < 0 || px >= maskSize || py < 0 || py >= maskSize) continue;
 
-
-
                 int idx = py * maskSize + px;
-
                 byte cur = _pixels[idx].r;
 
-
-
                 if (cur < 255)
-
                 {
-
-                    // speed * deltaTimeÀ» 0~255 ¹üÀ§·Î º¯È¯
-
                     int add = Mathf.RoundToInt(speed * Time.deltaTime * 255f);
-
                     int next = Mathf.Clamp(cur + add, 0, 255);
-
                     _pixels[idx] = new Color32((byte)next, 0, 0, 255);
 
-
-
-                    if (next >= 230 && cur < 230) // 90% ÀÌ»ó ¡æ ´ÛÀÎ ÇÈ¼¿·Î Ä«¿îÆ®
-
+                    if (next >= 230 && cur < 230)
                         _cleanedPixels++;
 
-
-
                     _isDirty = true;
-
                 }
-
             }
-
         }
-
     }
-
-
 
     private void CalculateProgress()
-
     {
-
-        // _cleanedPixels¸¦ ÀÌ¹Ì ´©Àû °è»êÇÏ¹Ç·Î ÀüÃ¼ ·çÇÁ ºÒÇÊ¿ä
-
+        float prevProgress = partProgress;
         partProgress = (_cleanedPixels / (float)_totalPixels) * 100f;
-
         partProgress = Mathf.Clamp(partProgress, 0f, 100f);
 
+        if (Mathf.Abs(prevProgress - partProgress) > 0.01f)
+        {
+            onProgressChanged?.Invoke();
+        }
     }
 
+    public void RevealDirt(float duration)
+    {
+        StartCoroutine(RevealRoutine(duration));
+    }
 
+    private IEnumerator RevealRoutine(float duration)
+    {
+        if (_mat == null) _mat = GetComponent<Renderer>().material;
+        _mat.SetFloat("_IsScanning", 1f);
+        yield return new WaitForSeconds(duration);
+        _mat.SetFloat("_IsScanning", 0f);
+    }
 
     void OnDestroy()
-
     {
-
         if (_maskTex != null) Destroy(_maskTex);
-
     }
-
 }

@@ -1,551 +1,775 @@
+using System.Collections;
+using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
-
 using UnityEngine.UI;
 
-using System.Collections;
-
-using System.Collections.Generic;
-
-using TMPro;
-
-
-
 public class PlayerMovement : MonoBehaviour
-
 {
-
-    [Header("--- ƒƒ∆˜≥Õ∆Æ ¬¸¡∂ ---")]
-
+    [Header("Component References")]
     public CharacterController controller;
-
     public Transform playerBody;
-
     private Camera mainCam;
+    private Vector3 defaultCameraLocalPos;
 
+    [Header("Start Flow")]
+    [SerializeField] private GameObject startPanel;
+    private bool hasGameStarted;
 
-
-    [Header("--- ¿Ãµø π◊ ºˆøµ º≥¡§ ---")]
-
+    [Header("Movement Settings")]
     public float speed = 55f;
-
     public float swimSpeed = 40f;
-
     public float sinkSpeed = 30f;
-
     public float minHeight = 1.5f;
 
+    [Header("Crouch Settings")]
+    public KeyCode crouchKey = KeyCode.LeftControl;
+    public float crouchCameraOffset = 0.6f;
+    public float crouchTransitionSpeed = 8f;
+    private bool isCrouching;
 
-
-    [Header("--- Ω√¡° »∏¿¸ º≥¡§ ---")]
-
+    [Header("Look Settings")]
     public float mouseSensitivity = 100f;
+    private float xRotation;
 
-    private float xRotation = 0f;
-
-
-
-    [Header("--- ªÍº“ Ω√Ω∫≈€ ---")]
-
+    [Header("Oxygen System")]
     public float maxOxygen = 100f;
-
     public float currentOxygen;
-
     public Image oxygenBar;
+    [HideInInspector] public bool isInBase;
 
-    [HideInInspector] public bool isInBase = false;
+    [Header("Oxygen Warning")]
+    [SerializeField] private Image oxygenWarningOverlay;
+    [Range(0f, 1f)] public float oxygenWarningThreshold = 0.1f;
+    [Range(0f, 1f)] public float maxWarningOverlayAlpha = 0.75f;
+    public int oxygenDepletionPenalty = 500;
 
+    [Header("Death Handling")]
+    [SerializeField] private GameObject deathPanel;
+    [SerializeField] private Transform respawnPoint;
+    private Vector3 startPosition;
+    private bool isDead;
 
+    [Header("UI System")]
+    [SerializeField] private GameObject helpPanel;
+    [SerializeField] private GameObject upgradeScreen;
+    public bool isUIOpen => isUpgradeOpen || isMissionMenuOpen || isHelpOpen;
+    private bool isUpgradeOpen;
+    private bool isMissionMenuOpen;
+    private bool isHelpOpen;
+    private bool isCursorUnlockedByEsc;
 
-    [Header("--- UI Ω√Ω∫≈€ ---")]
-
-    [SerializeField] private GameObject UpgradeScreen;
-
-    public bool isUIOpen { get { return isUpgradeOpen || isMissionMenuOpen; } }
-
-    private bool isUpgradeOpen = false;
-
-    private bool isMissionMenuOpen = false;
-
-
-
-    [Header("--- Status UI ---")]
-
+    [Header("Status UI")]
     [SerializeField] private TextMeshProUGUI coinText;
-
     [SerializeField] private TextMeshProUGUI finStatusText;
-
     [SerializeField] private TextMeshProUGUI finLevelText;
-
     [SerializeField] private TextMeshProUGUI oxygenLevelText;
-
     [SerializeField] private TextMeshProUGUI oxygenRankText;
 
-
-
-    [Header("--- Upgrade Buttons ---")]
-
+    [Header("Upgrade Buttons")]
     [SerializeField] private Button buyFinBtn;
-
     [SerializeField] private TextMeshProUGUI buyFinBtnText;
-
     [SerializeField] private Button upFinBtn;
-
     [SerializeField] private TextMeshProUGUI upFinBtnText;
-
     [SerializeField] private Button upOxyCapBtn;
-
     [SerializeField] private TextMeshProUGUI upOxyCapBtnText;
-
     [SerializeField] private Button upOxyEffBtn;
-
     [SerializeField] private TextMeshProUGUI upOxyEffBtnText;
 
-
-
-    [Header("--- «√∑π¿ÃæÓ Ω∫∆Â ---")]
-
-    public bool hasFins = false;
-
+    [Header("Player Stats")]
+    public bool hasFins;
     public int finLevel = 1;
-
     public int oxygenCapLevel = 1;
-
     public int oxygenEffLevel = 1;
-
-
+    public int maxUpgradeLevel = 20;
 
     private int currentBuyFinCost = 100;
-
     private int currentUpFinCost = 50;
-
     private int currentUpOxyCapCost = 50;
-
     private int currentUpOxyEffCost = 80;
 
-
-
-    [Header("--- √ªº“ Ω√Ω∫≈€ ---")]
-
+    [Header("Cleaning System")]
     public float cleanDistance = 50f;
-
     public enum WaterMode { Strong, Mid, Weak }
-
     public WaterMode currentMode = WaterMode.Mid;
-
     public float[] brushSizes = { 0.15f, 0.07f, 0.02f };
-
     public float[] cleanSpeeds = { 1.5f, 2.5f, 5.5f };
-
     public TextMeshProUGUI nozzleStatusText;
 
-
-
-    [Header("--- π∞ ¡Ÿ±‚ ªÛºº º≥¡§ (∏÷∆º ∆ƒ∆º≈¨) ---")]
-
-    // ¿ŒΩ∫∆Â≈Õø°º≠ ªÁøÎ«“ ∆ƒ∆º≈¨ ø¿∫Í¡ß∆ÆµÈ¿ª ∏µŒ µÂ∑°±◊«ÿº≠ ≥÷æÓ¡÷ººø‰. (øπ: 7∞≥)
-
+    [Header("Water VFX")]
     public List<GameObject> waterParticleObjects = new List<GameObject>();
 
+    [Header("Audio")]
+    public AudioSource waterAudioSource;
+    public AudioSource uiAudioSource;
+    public AudioClip waterClip;
+    public AudioClip uiOpenClip;
+    public AudioClip uiCloseClip;
 
+    [Header("Sickle Settings")]
+    public Transform sickleVisual;
+    public float attackRange = 3.0f;
+    public float attackCooldown = 0.5f;
+    private bool isAttacking;
 
     void Start()
-
     {
-
         mainCam = Camera.main;
+        if (mainCam != null) defaultCameraLocalPos = mainCam.transform.localPosition;
 
+        if (oxygenWarningOverlay == null)
+        {
+            GameObject overlayObject = GameObject.Find("BlindOverlay");
+            if (overlayObject != null) oxygenWarningOverlay = overlayObject.GetComponent<Image>();
+        }
+
+        if (deathPanel == null)
+        {
+            GameObject foundDeathPanel = GameObject.Find("DeathPanel");
+            if (foundDeathPanel != null) deathPanel = foundDeathPanel;
+        }
+
+        if (startPanel == null)
+        {
+            GameObject foundStartPanel = GameObject.Find("StartPanel");
+            if (foundStartPanel != null) startPanel = foundStartPanel;
+        }
+
+        if (helpPanel == null)
+        {
+            GameObject foundHelpPanel = GameObject.Find("HelpPanel");
+            if (foundHelpPanel != null) helpPanel = foundHelpPanel;
+        }
+
+        startPosition = transform.position;
         currentOxygen = maxOxygen;
 
-        Cursor.lockState = CursorLockMode.Locked;
+        foreach (GameObject obj in waterParticleObjects)
+        {
+            if (obj != null) obj.SetActive(false);
+        }
+
+        if (upgradeScreen != null) upgradeScreen.SetActive(false);
+        if (deathPanel != null) deathPanel.SetActive(false);
+        if (helpPanel != null) helpPanel.SetActive(false);
 
         UpdateNozzleUI();
-
-
-
-        // Ω√¿€ Ω√ ∏µÁ ∆ƒ∆º≈¨ ≤®µŒ±‚
-
-        foreach (var obj in waterParticleObjects) { if (obj != null) obj.SetActive(false); }
-
-
-
-        if (UpgradeScreen != null) UpgradeScreen.SetActive(false);
-
+        UpdateOxygenWarningOverlay();
+        SetStartState();
     }
-
-
 
     void Update()
-
     {
+        if (!hasGameStarted)
+        {
+            StopAllParticles();
+            if (waterAudioSource != null && waterAudioSource.isPlaying) waterAudioSource.Stop();
+            return;
+        }
+
+        HandleEscapeCursorToggle();
+        HandleMouseRelock();
 
         if (Input.GetKeyDown(KeyCode.N)) ToggleUpgrade();
-
         if (Input.GetKeyDown(KeyCode.M)) ToggleMissionMenu();
+        if (Input.GetKeyDown(KeyCode.H)) ToggleHelpPanel();
 
+        isMissionMenuOpen = MissionManager.Instance != null &&
+                            MissionManager.Instance.mMenuPanel != null &&
+                            MissionManager.Instance.mMenuPanel.activeSelf;
 
-
-        isMissionMenuOpen = (MissionManager.Instance != null && MissionManager.Instance.mMenuPanel.activeSelf);
-
-
-
-        if (isUIOpen)
-
+        if (isDead)
         {
-
+            UpdateOxygenWarningOverlay();
             StopAllParticles();
-
+            if (waterAudioSource != null && waterAudioSource.isPlaying) waterAudioSource.Stop();
             return;
-
         }
 
-
+        if (isUIOpen || isCursorUnlockedByEsc)
+        {
+            UpdateCrouchCamera();
+            StopAllParticles();
+            if (waterAudioSource != null && waterAudioSource.isPlaying) waterAudioSource.Stop();
+            return;
+        }
 
         HandleRotation();
-
         HandleMovement();
-
+        UpdateCrouchCamera();
         HandleOxygen();
-
         HandleInputs();
+        HandleWaterEffect();
 
-        HandleWaterEffect(); // π∞ ¡Ÿ±‚ √‚∑¬ ∑Œ¡˜ (∞≥ºˆ ¡¶æÓ)
-
+        if (waterAudioSource != null && waterAudioSource.isPlaying && waterAudioSource.time >= 3.0f)
+        {
+            waterAudioSource.time = 0.0f;
+        }
     }
 
+    private void SetStartState()
+    {
+        hasGameStarted = false;
+        if (startPanel != null) startPanel.SetActive(true);
+        SetCursor(true);
+    }
 
+    public void StartGame()
+    {
+        hasGameStarted = true;
+        isCursorUnlockedByEsc = false;
+        if (startPanel != null) startPanel.SetActive(false);
+        SetCursor(false);
+    }
 
     private void HandleInputs()
-
     {
+        if (Input.GetKeyDown(crouchKey))
+        {
+            isCrouching = !isCrouching;
+        }
 
         if (Input.GetKeyDown(KeyCode.Q))
-
         {
-
             currentMode = (WaterMode)(((int)currentMode + 1) % 3);
-
             UpdateNozzleUI();
-
-            // ∆ƒ∆º≈¨ ∞≥ºˆ∞° Ω«Ω√∞£¿∏∑Œ ∫Ø«ÿæﬂ «œπ«∑Œ πﬂªÁ ¡ﬂ¿Ã∂Û∏È ¡ÔΩ√ æ˜µ•¿Ã∆Æ∏¶ ¿ß«ÿ HandleWaterEffect∞° »£√‚µ 
-
         }
 
-        if (Input.GetKeyDown(KeyCode.E)) TryPickupTrash();
+        if (Input.GetMouseButtonDown(0) && !isUIOpen)
+        {
+            if (!isAttacking) StartCoroutine(SwingSickle());
+        }
 
-        if (Input.GetMouseButton(0)) HandleCleaning();
+        if (Input.GetMouseButtonDown(1) && !isUIOpen)
+        {
+            if (waterClip != null && waterAudioSource != null)
+            {
+                waterAudioSource.clip = waterClip;
+                waterAudioSource.Play();
+            }
+        }
 
+        if (Input.GetMouseButtonUp(1) || isUIOpen)
+        {
+            if (waterAudioSource != null && waterAudioSource.isPlaying) waterAudioSource.Stop();
+        }
+
+        if (Input.GetKeyDown(KeyCode.E)) TryPickupItems();
+
+        if (Input.GetMouseButton(1)) HandleCleaning();
     }
 
-
-
-    private void HandleWaterEffect()
-
+    private IEnumerator SwingSickle()
     {
+        isAttacking = true;
 
-        if (waterParticleObjects.Count == 0) return;
+        Vector3 rayOrigin = mainCam.transform.position;
+        Vector3 rayDirection = mainCam.transform.forward;
+        int layerMask = ~(1 << LayerMask.NameToLayer("Player"));
+        float maxAttackDist = 50.0f;
 
+        Debug.DrawRay(rayOrigin, rayDirection * maxAttackDist, Color.red, 1.0f);
 
-
-        bool isFiring = Input.GetMouseButton(0) && !isUIOpen;
-
-
-
-        if (isFiring)
-
+        if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, maxAttackDist, layerMask))
         {
+            Debug.Log($"<color=yellow>ÎÇ´Ïóê ÎßûÏùÄ Î¨ºÏ≤¥: {hit.collider.name}</color>");
 
-            int totalCount = waterParticleObjects.Count;
+            Barnacle barnacle = hit.collider.GetComponent<Barnacle>();
+            if (barnacle == null) barnacle = hit.collider.GetComponentInParent<Barnacle>();
 
-            int activeCount = 1;
-
-
-
-            // ∏µÂ∫∞ »∞º∫»≠ ∞≥ºˆ ∞ËªÍ
-
-            if (currentMode == WaterMode.Strong) activeCount = totalCount; // ±§π¸¿ß: ¿¸√º (øπ: 7∞≥)
-
-            else if (currentMode == WaterMode.Mid) activeCount = Mathf.Max(1, totalCount / 2 + 1); // ¡ﬂ∞£: ¿˝π› ¡§µµ (øπ: 4∞≥)
-
-            else activeCount = 1; // ¡˝¡ﬂ: 1∞≥
-
-
-
-            for (int i = 0; i < totalCount; i++)
-
+            if (barnacle != null)
             {
+                barnacle.TakeDamage(1);
+            }
+        }
 
-                if (waterParticleObjects[i] == null) continue;
+        if (sickleVisual != null)
+        {
+            Quaternion startRot = sickleVisual.localRotation;
+            Quaternion endRot = startRot * Quaternion.Euler(60, 0, 0);
 
-
-
-                bool shouldBeActive = i < activeCount;
-
-                if (waterParticleObjects[i].activeSelf != shouldBeActive)
-
-                {
-
-                    waterParticleObjects[i].SetActive(shouldBeActive);
-
-                }
-
+            float elapsed = 0f;
+            while (elapsed < 0.1f)
+            {
+                sickleVisual.localRotation = Quaternion.Slerp(startRot, endRot, elapsed / 0.1f);
+                elapsed += Time.deltaTime;
+                yield return null;
             }
 
+            elapsed = 0f;
+            while (elapsed < 0.2f)
+            {
+                sickleVisual.localRotation = Quaternion.Slerp(endRot, startRot, elapsed / 0.2f);
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            sickleVisual.localRotation = startRot;
         }
 
-        else
-
-        {
-
-            StopAllParticles();
-
-        }
-
+        yield return new WaitForSeconds(attackCooldown);
+        isAttacking = false;
     }
 
+    private void TryPickupItems()
+    {
+        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
 
+        if (Physics.Raycast(ray, out RaycastHit hit, 50.0f))
+        {
+            Barnacle barnacle = hit.collider.GetComponent<Barnacle>();
+            if (barnacle != null)
+            {
+                if (barnacle.CanCollect()) barnacle.Collect();
+                else Debug.Log("ÏïÑÏßÅ Îã®Îã®Ìï©ÎãàÎã§!");
+                return;
+            }
+        }
+
+        if (Physics.SphereCast(ray, 1.5f, out RaycastHit trashHit, 40f, 1 << LayerMask.NameToLayer("Trash")))
+        {
+            Trash trash = trashHit.collider.GetComponent<Trash>() ?? trashHit.collider.GetComponentInParent<Trash>();
+            if (trash != null)
+            {
+                if (CoinManager.instance != null) CoinManager.instance.AddCoins(trash.scoreValue);
+                if (MissionManager.Instance != null) MissionManager.Instance.OnTrashPickedUp();
+                Destroy(trash.gameObject);
+            }
+        }
+    }
+
+    private void HandleWaterEffect()
+    {
+        if (waterParticleObjects.Count == 0) return;
+
+        bool isFiring = Input.GetMouseButton(1) && !isUIOpen;
+
+        if (isFiring)
+        {
+            int totalCount = waterParticleObjects.Count;
+            int activeCount = currentMode == WaterMode.Strong ? totalCount :
+                currentMode == WaterMode.Mid ? Mathf.Max(1, totalCount / 2 + 1) : 1;
+
+            for (int i = 0; i < totalCount; i++)
+            {
+                if (waterParticleObjects[i] == null) continue;
+                waterParticleObjects[i].SetActive(i < activeCount);
+            }
+        }
+        else
+        {
+            StopAllParticles();
+        }
+    }
 
     private void StopAllParticles()
-
     {
-
-        foreach (var obj in waterParticleObjects)
-
+        foreach (GameObject obj in waterParticleObjects)
         {
-
             if (obj != null && obj.activeSelf) obj.SetActive(false);
-
         }
-
     }
 
-
-
-    // ... (¿Ãµø, »∏¿¸, ªÍº“ µÓ ≥™∏”¡ˆ ±‚¡∏ ∑Œ¡˜ ¿Ø¡ˆ) ...
-
-
-
     private void HandleMovement()
-
     {
-
         float x = Input.GetAxis("Horizontal");
-
         float z = Input.GetAxis("Vertical");
-
         float currentMoveSpeed = speed;
 
         if (hasFins && Input.GetKey(KeyCode.LeftShift)) currentMoveSpeed = speed * 1.4f;
 
-        Vector3 move = (transform.right * x + transform.forward * z);
-
+        Vector3 move = transform.right * x + transform.forward * z;
         if (move.magnitude > 0.1f) controller.Move(move * currentMoveSpeed * Time.deltaTime);
 
-        float finalSwimSpeed = (hasFins && Input.GetKey(KeyCode.LeftShift)) ? swimSpeed * 1.4f : swimSpeed;
-
-        if (Input.GetKey(KeyCode.Space)) controller.Move(Vector3.up * finalSwimSpeed * Time.deltaTime);
-
-        else if (transform.position.y > minHeight) controller.Move(Vector3.down * sinkSpeed * Time.deltaTime);
-
-        if (transform.position.y < minHeight) { Vector3 targetPos = transform.position; targetPos.y = minHeight; transform.position = targetPos; }
-
+        float finalSwimSpeed = hasFins && Input.GetKey(KeyCode.LeftShift) ? swimSpeed * 1.4f : swimSpeed;
+        if (Input.GetKey(KeyCode.Space))
+        {
+            controller.Move(Vector3.up * finalSwimSpeed * Time.deltaTime);
+        }
+        else if (transform.position.y > minHeight)
+        {
+            controller.Move(Vector3.down * sinkSpeed * Time.deltaTime);
+        }
     }
 
+    private void HandleCleaning()
+    {
+        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
 
+        if (Physics.Raycast(ray, out RaycastHit hit, cleanDistance, 1 << LayerMask.NameToLayer("Dirt")))
+        {
+            DirtPainter painter = hit.collider.GetComponent<DirtPainter>();
+            if (painter != null) painter.Paint(hit.textureCoord, brushSizes[(int)currentMode], cleanSpeeds[(int)currentMode]);
+
+            float worldRadius = currentMode == WaterMode.Strong ? 3.0f : currentMode == WaterMode.Mid ? 1.5f : 0.5f;
+            Collider[] nearbyColliders = Physics.OverlapSphere(hit.point, worldRadius, 1 << LayerMask.NameToLayer("Dirt"));
+
+            foreach (Collider col in nearbyColliders)
+            {
+                SubmarinePart part = col.GetComponent<SubmarinePart>();
+                if (part != null) part.CleanByWorldPos(hit.point, worldRadius, cleanSpeeds[(int)currentMode]);
+            }
+        }
+    }
 
     private void ToggleMissionMenu()
-
     {
-
         if (MissionManager.Instance == null || MissionManager.Instance.mMenuPanel == null) return;
 
         GameObject menu = MissionManager.Instance.mMenuPanel;
-
         bool isActive = !menu.activeSelf;
-
+        isCursorUnlockedByEsc = false;
+        if (isHelpOpen) SetHelpPanel(false);
         menu.SetActive(isActive);
 
-        if (isActive) { if (isUpgradeOpen) ToggleUpgrade(); MissionManager.Instance.ShowAvailableJobs(); SetCursor(true); }
-
-        else SetCursor(false);
-
+        if (isActive)
+        {
+            if (isUpgradeOpen) ToggleUpgrade();
+            MissionManager.Instance.ShowAvailableJobs();
+            SetCursor(true);
+            if (uiAudioSource != null && uiOpenClip != null) uiAudioSource.PlayOneShot(uiOpenClip);
+        }
+        else
+        {
+            SetCursor(false);
+            if (uiAudioSource != null && uiCloseClip != null) uiAudioSource.PlayOneShot(uiCloseClip);
+        }
     }
 
-
-
-    void ToggleUpgrade()
-
+    private void ToggleUpgrade()
     {
-
         isUpgradeOpen = !isUpgradeOpen;
+        isCursorUnlockedByEsc = false;
+        if (isUpgradeOpen && isHelpOpen) SetHelpPanel(false);
 
-        if (UpgradeScreen != null) UpgradeScreen.SetActive(isUpgradeOpen);
+        if (upgradeScreen != null) upgradeScreen.SetActive(isUpgradeOpen);
 
-        if (isUpgradeOpen) { UpdateStatusUI(); if (MissionManager.Instance != null) MissionManager.Instance.mMenuPanel.SetActive(false); SetCursor(true); }
+        if (isUpgradeOpen)
+        {
+            UpdateStatusUI();
+            if (MissionManager.Instance != null && MissionManager.Instance.mMenuPanel != null)
+                MissionManager.Instance.mMenuPanel.SetActive(false);
 
-        else SetCursor(false);
-
+            SetCursor(true);
+            if (uiAudioSource != null && uiOpenClip != null) uiAudioSource.PlayOneShot(uiOpenClip);
+        }
+        else
+        {
+            SetCursor(false);
+            if (uiAudioSource != null && uiCloseClip != null) uiAudioSource.PlayOneShot(uiCloseClip);
+        }
     }
 
+    private void SetCursor(bool show)
+    {
+        Cursor.lockState = show ? CursorLockMode.None : CursorLockMode.Locked;
+        Cursor.visible = show;
+    }
 
+    private void UpdateNozzleUI()
+    {
+        if (nozzleStatusText != null)
+        {
+            nozzleStatusText.text = "ÎÖ∏Ï¶ê : " + (currentMode == WaterMode.Strong ? "Í¥ëÎ≤îÏúÑ" :
+                                   currentMode == WaterMode.Mid ? "ÏùºÎ∞ò" : "ÏßëÏ§ë");
+        }
+    }
 
-    private void SetCursor(bool show) { Cursor.lockState = show ? CursorLockMode.None : CursorLockMode.Locked; Cursor.visible = show; }
+    public void BuyFins()
+    {
+        if (CoinManager.instance == null) return;
+        if (!hasFins && CoinManager.instance.currentCoins >= currentBuyFinCost)
+        {
+            CoinManager.instance.SubtractCoins(currentBuyFinCost);
+            hasFins = true;
+            UpdateStatusUI();
+        }
+    }
 
+    public void UpgradeFinLevel()
+    {
+        if (CoinManager.instance == null) return;
+        if (hasFins && finLevel < maxUpgradeLevel && CoinManager.instance.currentCoins >= currentUpFinCost)
+        {
+            CoinManager.instance.SubtractCoins(currentUpFinCost);
+            finLevel++;
+            speed += 10f;
+            swimSpeed += 7f;
+            currentUpFinCost += 60;
+            UpdateStatusUI();
+        }
+    }
 
+    public void UpgradeOxygenCapacity()
+    {
+        if (CoinManager.instance == null) return;
+        if (oxygenCapLevel < maxUpgradeLevel && CoinManager.instance.currentCoins >= currentUpOxyCapCost)
+        {
+            CoinManager.instance.SubtractCoins(currentUpOxyCapCost);
+            oxygenCapLevel++;
+            maxOxygen += 25f;
+            currentOxygen = maxOxygen;
+            currentUpOxyCapCost += 40;
+            UpdateStatusUI();
+        }
+    }
 
-    public void BuyFins() { if (!hasFins && CoinManager.instance.currentCoins >= currentBuyFinCost) { CoinManager.instance.SubtractCoins(currentBuyFinCost); hasFins = true; UpdateStatusUI(); } }
-
-    public void UpgradeFinLevel() { if (hasFins && CoinManager.instance.currentCoins >= currentUpFinCost) { CoinManager.instance.SubtractCoins(currentUpFinCost); finLevel++; speed += 10f; swimSpeed += 7f; currentUpFinCost += 60; UpdateStatusUI(); } }
-
-    public void UpgradeOxygenCapacity() { if (CoinManager.instance.currentCoins >= currentUpOxyCapCost) { CoinManager.instance.SubtractCoins(currentUpOxyCapCost); oxygenCapLevel++; maxOxygen += 25f; currentOxygen = maxOxygen; currentUpOxyCapCost += 40; UpdateStatusUI(); } }
-
-    public void UpgradeOxygenEfficiency() { if (oxygenEffLevel < 4 && CoinManager.instance.currentCoins >= currentUpOxyEffCost) { CoinManager.instance.SubtractCoins(currentUpOxyEffCost); oxygenEffLevel++; currentUpOxyEffCost += 70; UpdateStatusUI(); } }
-
-
+    public void UpgradeOxygenEfficiency()
+    {
+        if (CoinManager.instance == null) return;
+        if (oxygenEffLevel < maxUpgradeLevel && CoinManager.instance.currentCoins >= currentUpOxyEffCost)
+        {
+            CoinManager.instance.SubtractCoins(currentUpOxyEffCost);
+            oxygenEffLevel++;
+            currentUpOxyEffCost += 70;
+            UpdateStatusUI();
+        }
+    }
 
     public void UpdateStatusUI()
-
     {
+        if (CoinManager.instance != null && coinText != null) coinText.text = $"ÌòÑÏû¨ Î≥¥Ïú† ÏΩîÏù∏: {CoinManager.instance.currentCoins}G";
+        if (finStatusText != null) finStatusText.text = hasFins ? "Ïù¥Îèô Ïû•ÎπÑ: Ïò§Î¶¨Î∞ú (Îã¨Î¶¨Í∏∞/ÎåÄÏâ¨ Í∞ÄÎä•)" : "Ïù¥Îèô Ïû•ÎπÑ: Îß®Î∞ú";
+        if (finLevelText != null) finLevelText.text = hasFins ? $"Ïò§Î¶¨Î∞ú Î†àÎ≤®: Lv.{finLevel}" : "Ïò§Î¶¨Î∞ú Î†àÎ≤®: ÎØ∏ÌöçÎìù";
+        if (oxygenLevelText != null) oxygenLevelText.text = $"ÏÇ∞ÏÜåÌÜµ Î†àÎ≤®: Lv.{oxygenCapLevel} (ÏµúÎåÄ {maxOxygen:F0})";
+        if (oxygenRankText != null) oxygenRankText.text = $"ÏÇ∞ÏÜåÌÜµ Îì±Í∏â: {GetOxygenRankName(oxygenEffLevel)}";
 
-        if (CoinManager.instance != null) coinText.text = $"«ˆ¿Á ∫∏¿Ø ƒ⁄¿Œ: {CoinManager.instance.currentCoins}G";
+        if (CoinManager.instance == null) return;
 
-        finStatusText.text = hasFins ? "¿Ãµø ¿Â∫Ò: ø¿∏Æπﬂ (¥ﬁ∏Æ±‚/¥ÎΩ¨ ∞°¥…)" : "¿Ãµø ¿Â∫Ò: ∏«πﬂ";
+        if (buyFinBtn != null) buyFinBtn.interactable = !hasFins && CoinManager.instance.currentCoins >= currentBuyFinCost;
+        if (buyFinBtnText != null) buyFinBtnText.text = hasFins ? "ÌöçÎìù ÏôÑÎ£å" : $"Íµ¨Îß§ ({currentBuyFinCost}G)";
 
-        finLevelText.text = hasFins ? $"ø¿∏Æπﬂ ∑π∫ß: Lv.{finLevel}" : "ø¿∏Æπﬂ ∑π∫ß: πÃ»πµÊ";
+        if (upFinBtn != null) upFinBtn.interactable = hasFins && finLevel < maxUpgradeLevel && CoinManager.instance.currentCoins >= currentUpFinCost;
+        if (upFinBtnText != null) upFinBtnText.text = !hasFins ? "Ïò§Î¶¨Î∞ú ÌïÑÏöî" : finLevel >= maxUpgradeLevel ? "ÏµúÎåÄ" : $"Í∞ïÌôî ({currentUpFinCost}G)";
 
-        oxygenLevelText.text = $"ªÍº“≈Î ∑π∫ß: Lv.{oxygenCapLevel} (√÷¥Î {maxOxygen:F0})";
+        if (upOxyCapBtn != null) upOxyCapBtn.interactable = oxygenCapLevel < maxUpgradeLevel && CoinManager.instance.currentCoins >= currentUpOxyCapCost;
+        if (upOxyCapBtnText != null) upOxyCapBtnText.text = oxygenCapLevel >= maxUpgradeLevel ? "ÏµúÎåÄ" : $"ÌôïÏû• ({currentUpOxyCapCost}G)";
 
-        oxygenRankText.text = $"ªÍº“≈Î µÓ±ﬁ: {GetOxygenRankName(oxygenEffLevel)}";
-
-        buyFinBtn.interactable = !hasFins && (CoinManager.instance.currentCoins >= currentBuyFinCost);
-
-        buyFinBtnText.text = hasFins ? "»πµÊ øœ∑·" : $"±∏∏≈ ({currentBuyFinCost}G)";
-
-        upFinBtn.interactable = hasFins && (CoinManager.instance.currentCoins >= currentUpFinCost);
-
-        upFinBtnText.text = !hasFins ? "ø¿∏Æπﬂ « ø‰" : $"∞≠»≠ ({currentUpFinCost}G)";
-
-        upOxyCapBtn.interactable = (CoinManager.instance.currentCoins >= currentUpOxyCapCost);
-
-        upOxyCapBtnText.text = $"»Æ¿Â ({currentUpOxyCapCost}G)";
-
-        if (oxygenEffLevel >= 4) { upOxyEffBtn.interactable = false; upOxyEffBtnText.text = "√÷¥Î"; }
-
-        else { upOxyEffBtn.interactable = (CoinManager.instance.currentCoins >= currentUpOxyEffCost); upOxyEffBtnText.text = $"∞≠»≠ ({currentUpOxyEffCost}G)"; }
-
+        if (oxygenEffLevel >= maxUpgradeLevel)
+        {
+            if (upOxyEffBtn != null) upOxyEffBtn.interactable = false;
+            if (upOxyEffBtnText != null) upOxyEffBtnText.text = "ÏµúÎåÄ";
+        }
+        else
+        {
+            if (upOxyEffBtn != null) upOxyEffBtn.interactable = CoinManager.instance.currentCoins >= currentUpOxyEffCost;
+            if (upOxyEffBtnText != null) upOxyEffBtnText.text = $"Í∞ïÌôî ({currentUpOxyEffCost}G)";
+        }
     }
 
-
-
-    string GetOxygenRankName(int level) { switch (level) { case 1: return "¿œπ›"; case 2: return "∞≠»≠"; case 3: return "¿¸πÆ∞°"; default: return "Ω…«ÿøÎ"; } }
-
-
+    private string GetOxygenRankName(int level)
+    {
+        switch (level)
+        {
+            case 1: return "ÏùºÎ∞ò";
+            case 2: return "Í∞ïÌôî";
+            case 3: return "Ï†ÑÎ¨∏Í∞Ä";
+            default: return "Ïã¨Ìï¥Ïö©";
+        }
+    }
 
     private void HandleRotation()
-
     {
-
         float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * Time.deltaTime;
-
         float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * Time.deltaTime;
 
-        xRotation -= mouseY; xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+        xRotation -= mouseY;
+        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
 
-        mainCam.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-
-        playerBody.Rotate(Vector3.up * mouseX);
-
+        if (mainCam != null) mainCam.transform.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        if (playerBody != null) playerBody.Rotate(Vector3.up * mouseX);
     }
 
+    private void UpdateCrouchCamera()
+    {
+        if (mainCam == null) return;
 
+        Vector3 targetLocalPos = defaultCameraLocalPos;
+        if (isCrouching) targetLocalPos.y -= crouchCameraOffset;
+
+        mainCam.transform.localPosition = Vector3.Lerp(
+            mainCam.transform.localPosition,
+            targetLocalPos,
+            Time.deltaTime * crouchTransitionSpeed);
+    }
+
+    private void HandleEscapeCursorToggle()
+    {
+        if (!Input.GetKeyDown(KeyCode.Escape) || isDead || !hasGameStarted) return;
+
+        if (isHelpOpen)
+        {
+            SetHelpPanel(false);
+            return;
+        }
+
+        if (isUpgradeOpen)
+        {
+            ToggleUpgrade();
+            return;
+        }
+
+        if (MissionManager.Instance != null &&
+            MissionManager.Instance.mMenuPanel != null &&
+            MissionManager.Instance.mMenuPanel.activeSelf)
+        {
+            ToggleMissionMenu();
+            return;
+        }
+
+        isCursorUnlockedByEsc = !isCursorUnlockedByEsc;
+        SetCursor(isCursorUnlockedByEsc);
+    }
+
+    private void HandleMouseRelock()
+    {
+        if (!isCursorUnlockedByEsc || isDead || !hasGameStarted) return;
+        if (isUpgradeOpen || isMissionMenuOpen) return;
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            isCursorUnlockedByEsc = false;
+            SetCursor(false);
+        }
+    }
+
+    public void ToggleHelpPanel()
+    {
+        SetHelpPanel(!isHelpOpen);
+    }
+
+    public void OpenHelpPanel()
+    {
+        SetHelpPanel(true);
+    }
+
+    public void CloseHelpPanel()
+    {
+        SetHelpPanel(false);
+    }
+
+    private void SetHelpPanel(bool isOpen)
+    {
+        isHelpOpen = isOpen;
+        isCursorUnlockedByEsc = false;
+
+        if (helpPanel != null) helpPanel.SetActive(isOpen);
+
+        if (isOpen)
+        {
+            if (isUpgradeOpen) ToggleUpgrade();
+            if (MissionManager.Instance != null && MissionManager.Instance.mMenuPanel != null && MissionManager.Instance.mMenuPanel.activeSelf)
+            {
+                MissionManager.Instance.mMenuPanel.SetActive(false);
+                isMissionMenuOpen = false;
+            }
+            SetCursor(true);
+        }
+        else if (!isUpgradeOpen && !isMissionMenuOpen && !isDead)
+        {
+            SetCursor(false);
+        }
+    }
 
     private void HandleOxygen()
-
     {
-
-        if (isInBase) currentOxygen += Time.deltaTime * 20f;
-
-        else { float rate = 0.5f * (1.1f - (oxygenEffLevel * 0.1f)); currentOxygen -= Time.deltaTime * rate; }
+        if (isInBase)
+        {
+            currentOxygen += Time.deltaTime * 20f;
+        }
+        else
+        {
+            float rate = 0.5f * (1.1f - (oxygenEffLevel * 0.1f));
+            currentOxygen -= Time.deltaTime * rate;
+        }
 
         currentOxygen = Mathf.Clamp(currentOxygen, 0, maxOxygen);
 
         if (oxygenBar != null) oxygenBar.fillAmount = currentOxygen / maxOxygen;
+        UpdateOxygenWarningOverlay();
 
+        if (currentOxygen <= 0f && !isDead)
+        {
+            HandleDeathByOxygen();
+        }
     }
 
-
-
-    private void TryPickupTrash()
-
+    private void UpdateOxygenWarningOverlay()
     {
+        if (oxygenWarningOverlay == null || maxOxygen <= 0f) return;
 
-        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        float oxygenRatio = currentOxygen / maxOxygen;
+        float alpha = 0f;
 
-        RaycastHit hit;
-
-        if (Physics.SphereCast(ray, 1.5f, out hit, 40f, 1 << LayerMask.NameToLayer("Trash")))
-
+        if (oxygenRatio < oxygenWarningThreshold)
         {
-
-            Trash trash = hit.collider.GetComponent<Trash>() ?? hit.collider.GetComponentInParent<Trash>();
-
-            if (trash != null)
-
-            {
-
-                if (CoinManager.instance != null) CoinManager.instance.AddCoins(trash.scoreValue);
-
-                if (MissionManager.Instance != null) MissionManager.Instance.OnTrashPickedUp();
-
-                Destroy(trash.gameObject);
-
-            }
-
+            float t = 1f - Mathf.Clamp01(oxygenRatio / oxygenWarningThreshold);
+            alpha = t * maxWarningOverlayAlpha;
         }
 
+        Color color = oxygenWarningOverlay.color;
+        color.a = alpha;
+        oxygenWarningOverlay.color = color;
     }
 
-
-
-    private void HandleCleaning()
-
+    private void HandleDeathByOxygen()
     {
+        isDead = true;
+        currentOxygen = 0f;
+        isCursorUnlockedByEsc = false;
+        StopAllParticles();
 
-        Ray ray = mainCam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+        if (waterAudioSource != null && waterAudioSource.isPlaying) waterAudioSource.Stop();
+        if (deathPanel != null) deathPanel.SetActive(true);
 
-        RaycastHit hit;
+        SetCursor(true);
+    }
 
+    public void ReturnToBaseAfterDeath()
+    {
+        if (!isDead) return;
 
-
-        // "Dirt" ∑π¿ÃæÓø° ∏¬æ“¿ª ∂ß
-
-        if (Physics.Raycast(ray, out hit, cleanDistance, 1 << LayerMask.NameToLayer("Dirt")))
-
+        if (CoinManager.instance != null)
         {
-
-            // 1. ±‚¡∏ ƒ⁄µÂ (µ˚∞≥∫Ò µÓ) - ¿÷¿∏∏È ¿€µø
-
-            DirtPainter p = hit.collider.GetComponent<DirtPainter>();
-
-            if (p != null) p.Paint(hit.textureCoord, brushSizes[(int)currentMode], cleanSpeeds[(int)currentMode]);
-
-
-
-            // 2. ªı∑ŒøÓ ¿·ºˆ«‘ ƒ⁄µÂ - ¿÷¿∏∏È ¿€µø (√ﬂ∞°µ» ∫Œ∫–!)
-
-            SubmarinePart s = hit.collider.GetComponent<SubmarinePart>();
-
-            if (s != null) s.Clean(hit.textureCoord, brushSizes[(int)currentMode], cleanSpeeds[(int)currentMode]);
-
+            CoinManager.instance.SubtractCoins(oxygenDepletionPenalty);
         }
 
+        Transform targetPoint = respawnPoint;
+        if (controller != null) controller.enabled = false;
+
+        if (targetPoint != null)
+        {
+            transform.position = targetPoint.position;
+            if (playerBody != null) playerBody.rotation = targetPoint.rotation;
+        }
+        else
+        {
+            transform.position = startPosition;
+        }
+
+        if (controller != null) controller.enabled = true;
+
+        currentOxygen = maxOxygen;
+        isInBase = true;
+        isDead = false;
+        isCrouching = false;
+
+        if (mainCam != null) mainCam.transform.localPosition = defaultCameraLocalPos;
+        if (oxygenBar != null) oxygenBar.fillAmount = 1f;
+
+        UpdateOxygenWarningOverlay();
+
+        if (deathPanel != null) deathPanel.SetActive(false);
+        SetCursor(false);
     }
 
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Base")) isInBase = true;
+    }
 
-
-    private void UpdateNozzleUI() { if (nozzleStatusText != null) nozzleStatusText.text = "≥Î¡Ò : " + (currentMode == WaterMode.Strong ? "±§π¸¿ß" : (currentMode == WaterMode.Mid ? "¿œπ›" : "¡˝¡ﬂ")); }
-
-    private void OnTriggerEnter(Collider other) { if (other.CompareTag("Base")) isInBase = true; }
-
-    private void OnTriggerExit(Collider other) { if (other.CompareTag("Base")) isInBase = false; }
-
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.CompareTag("Base")) isInBase = false;
+    }
 }

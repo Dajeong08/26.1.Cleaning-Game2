@@ -1,5 +1,5 @@
-using UnityEngine;
 using TMPro;
+using UnityEngine;
 using UnityEngine.UI;
 
 public class TrackerItem : MonoBehaviour
@@ -14,20 +14,19 @@ public class TrackerItem : MonoBehaviour
         myData = data;
         if (rewardButton != null) rewardButton.gameObject.SetActive(false);
 
-        // ÃÊ±â ÅØ½ºÆ® ¼³Á¤
+        string displayName = GetDisplayMissionName(data.missionName);
         UpdateMissionStatus(
-            $"<b>{data.missionName}</b>\n³²Àº µû°³ºñ °³¼ö : {data.remainingTrash}\n´Û±â ÁøÇàµµ : 0.0%",
+            $"<b>{displayName}</b>\në‚¨ì€ ë”°ê°œë¹„ ê°œìˆ˜ : {data.remainingTrash}\në‹¦ê¸° ì§„í–‰ë„ : 0.0%",
             false,
             data.rewardCoin
         );
     }
 
-    // ÀÎ½ºÆåÅÍ OnClick¿¡¼­ ¿¬°áÇÒ ÇÔ¼ö
     public void OnClickRewardButton()
     {
         if (MissionManager.Instance != null && myData != null)
         {
-            MissionManager.Instance.ClaimReward(myData.missionName, myData.rewardCoin, this.gameObject);
+            MissionManager.Instance.ClaimReward(myData.missionName, myData.rewardCoin, gameObject);
         }
     }
 
@@ -35,11 +34,16 @@ public class TrackerItem : MonoBehaviour
     {
         if (allInfoText != null) allInfoText.text = info;
         if (rewardButton != null) rewardButton.gameObject.SetActive(isComplete);
+    }
 
-        if (isComplete)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
+    private string GetDisplayMissionName(string missionName)
+    {
+        if (string.IsNullOrEmpty(missionName)) return "ì˜ë¢°";
+
+        string lowerName = missionName.ToLower();
+        if (lowerName.Contains("tutorial")) return "íŠœí† ë¦¬ì–¼";
+        if (lowerName.Contains("newmap") || lowerName.Contains("sub")) return "ì ìˆ˜í•¨";
+
+        return missionName;
     }
 }
