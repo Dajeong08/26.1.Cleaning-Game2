@@ -45,24 +45,18 @@ public class SubmarineManager : MonoBehaviour
         foreach (var part in allParts)
             sum += part.partProgress;
 
-        // 1. 실제 평균 진행도 (예: 0% ~ 100%)
-        float realOverall = sum / allParts.Count;
+        float realOverall = Mathf.Clamp(sum / allParts.Count, 0f, 100f);
+        float displayProgress = clearThreshold <= 0f
+            ? realOverall
+            : Mathf.Clamp((realOverall / clearThreshold) * 100f, 0f, 100f);
 
-        // 2. [핵심] 퍼센트 뻥튀기 로직
-        // clearThreshold가 5%라면, 5%를 닦았을 때 유저에게는 100%로 보이게 만듭니다.
-        float displayProgress = (realOverall / clearThreshold) * 100f;
-
-        // 100%를 넘지 않게 고정
-        displayProgress = Mathf.Clamp(displayProgress, 0f, 100f);
-
-        // 3. UI와 MissionManager에는 '뻥튀기 된' 퍼센트를 전달
         if (MissionManager.Instance != null)
             MissionManager.Instance.UpdateProgress(displayProgress);
 
-        if (!_isCleared && displayProgress >= 100f)
+        if (!_isCleared && realOverall >= clearThreshold)
         {
             _isCleared = true;
-            Debug.Log("🎉 잠수함 세척 완료 (보정치 적용)!");
+            Debug.Log("잠수함 세척 완료!");
         }
     }
     // SubmarineManager.cs 내부에 추가

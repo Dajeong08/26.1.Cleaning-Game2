@@ -1,8 +1,9 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class TrackerItem : MonoBehaviour
+public class TrackerItem : MonoBehaviour, IPointerClickHandler
 {
     [SerializeField] private TextMeshProUGUI allInfoText;
     [SerializeField] private Button rewardButton;
@@ -12,7 +13,14 @@ public class TrackerItem : MonoBehaviour
     public void Setup(MissionData data)
     {
         myData = data;
-        if (rewardButton != null) rewardButton.gameObject.SetActive(false);
+
+        if (rewardButton != null)
+        {
+            rewardButton.onClick.RemoveAllListeners();
+            rewardButton.onClick.AddListener(OnClickRewardButton);
+            rewardButton.gameObject.SetActive(false);
+            rewardButton.interactable = false;
+        }
 
         string displayName = GetDisplayMissionName(data.missionName);
         UpdateMissionStatus(
@@ -24,16 +32,46 @@ public class TrackerItem : MonoBehaviour
 
     public void OnClickRewardButton()
     {
-        if (MissionManager.Instance != null && myData != null)
+        if (!IsRewardButtonReady()) return;
+        if (MissionManager.Instance == null || myData == null) return;
+
+        MissionManager.Instance.ClaimReward(myData.missionName, myData.rewardCoin, gameObject);
+    }
+
+    public void OnPointerClick(PointerEventData eventData)
+    {
+        if (!IsRewardButtonReady()) return;
+        if (eventData == null || eventData.button != PointerEventData.InputButton.Left) return;
+
+        RectTransform buttonRect = rewardButton.transform as RectTransform;
+        Canvas canvas = GetComponentInParent<Canvas>();
+        Camera eventCamera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? canvas.worldCamera
+            : null;
+
+        if (buttonRect != null &&
+            RectTransformUtility.RectangleContainsScreenPoint(buttonRect, eventData.position, eventCamera))
         {
-            MissionManager.Instance.ClaimReward(myData.missionName, myData.rewardCoin, gameObject);
+            OnClickRewardButton();
         }
     }
 
     public void UpdateMissionStatus(string info, bool isComplete, int reward)
     {
         if (allInfoText != null) allInfoText.text = info;
-        if (rewardButton != null) rewardButton.gameObject.SetActive(isComplete);
+
+        if (rewardButton != null)
+        {
+            rewardButton.gameObject.SetActive(isComplete);
+            rewardButton.interactable = isComplete;
+        }
+    }
+
+    private bool IsRewardButtonReady()
+    {
+        return rewardButton != null &&
+               rewardButton.gameObject.activeInHierarchy &&
+               rewardButton.interactable;
     }
 
     private string GetDisplayMissionName(string missionName)

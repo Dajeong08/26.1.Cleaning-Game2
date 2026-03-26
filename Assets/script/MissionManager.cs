@@ -31,6 +31,7 @@ public class MissionManager : MonoBehaviour
     public GameObject submarineMapGroup;
 
     public string currentActiveMissionName;
+    public bool HasAnyAcceptedMission => activeTrackers.Count > 0;
 
     private void Awake()
     {
@@ -63,6 +64,7 @@ public class MissionManager : MonoBehaviour
 
     private void AcceptMission(string missionName)
     {
+        // 새로운 미션 데이터를 생성
         if (activeTrackers.ContainsKey(missionName))
         {
             StartMapTransition(missionName);
@@ -75,9 +77,11 @@ public class MissionManager : MonoBehaviour
             status = MissionData.MissionStatus.InProgress
         };
 
+
         string lowerName = missionName.ToLower();
         GameObject mapGroup = null;
 
+        // 미션 이름에 따라 보상을 다르게 설정
         if (lowerName.Contains("tutorial"))
         {
             mapGroup = tutorialMapGroup;
@@ -114,12 +118,15 @@ public class MissionManager : MonoBehaviour
 
     public void StartMapTransition(string missionName)
     {
+        // 현재 활성 미션 이름을 저장
         currentActiveMissionName = missionName;
         string lowerName = missionName.ToLower();
 
+        // 기존 맵은 모두 비활성화
         if (tutorialMapGroup != null) tutorialMapGroup.SetActive(false);
         if (submarineMapGroup != null) submarineMapGroup.SetActive(false);
 
+        // 미션 이름에 따라 맞는 맵만 활성화
         if (lowerName.Contains("tutorial"))
         {
             if (tutorialMapGroup != null) tutorialMapGroup.SetActive(true);
@@ -130,6 +137,7 @@ public class MissionManager : MonoBehaviour
             if (SubmarineManager.Instance != null) SubmarineManager.Instance.AppearSubmarine();
         }
 
+        // 의뢰창은 닫고 게임 플레이 상태로 전환
         if (mMenuPanel != null) mMenuPanel.SetActive(false);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -144,7 +152,7 @@ public class MissionManager : MonoBehaviour
     public void OnTrashPickedUp(string missionName)
     {
         if (!missionDatas.ContainsKey(missionName)) return;
-        missionDatas[missionName].remainingTrash--;
+        missionDatas[missionName].remainingTrash = Mathf.Max(0, missionDatas[missionName].remainingTrash - 1);
         UpdateSpecificTrackerUI(missionName);
     }
 
@@ -165,13 +173,16 @@ public class MissionManager : MonoBehaviour
     {
         if (!activeTrackers.ContainsKey(missionName)) return;
 
+        // 미션 이름, 남은 개수, 진행도를 문자열로 구성
         MissionData data = missionDatas[missionName];
         string displayName = GetDisplayMissionName(data.missionName);
         string infoText = $"<b>{displayName}</b>\n" +
                           $"남은 따개비 개수 : {data.remainingTrash}\n" +
                           $"닦기 진행도 : {data.currentProgress:F1}%";
 
-        bool isAllDone = data.remainingTrash <= 0 && data.currentProgress >= 99.0f;
+        // 수거와 청소가 모두 끝났을 때만 완료 처리
+        bool isAllDone = data.remainingTrash <= 0 && data.currentProgress >= 99.95f;
+
         activeTrackers[missionName].UpdateMissionStatus(infoText, isAllDone, data.rewardCoin);
     }
 
@@ -190,16 +201,23 @@ public class MissionManager : MonoBehaviour
 
     public void MoveToCompleted(string missionName)
     {
+        // 미션 이름을 소문자로 바꿔서 어떤 맵인지 판별하기 쉽게 함
         string lowerName = missionName.ToLower();
         GameObject cardTarget = null;
 
+        // 완료 처리할 의뢰 카드를 선택
         if (lowerName.Contains("tutorial")) cardTarget = tutorialJobCard;
-        else if (lowerName.Contains("newmap") || lowerName.Contains("sub")) cardTarget = submarineJobCard;
+        else if (lowerName.Contains("newmap") || 
+            lowerName.Contains("sub")) cardTarget = submarineJobCard;
 
+        // 해당 카드가 존재하면 완료 영역으로 이동
         if (cardTarget != null)
         {
+            // 의뢰 카드를 Completed 탭의 부모 오브젝트로 옮김
             cardTarget.transform.SetParent(completedContent);
+            // 이동 후 크기가 깨지지 않도록 기본 크기로 맞춤
             cardTarget.transform.localScale = Vector3.one;
+            // 카드 UI를 완료 상태로 변경
             JobItemUI itemUI = cardTarget.GetComponent<JobItemUI>();
             if (itemUI != null) itemUI.SetMissionCompleted();
         }

@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public class PlayerMovement : MonoBehaviour
@@ -14,7 +15,12 @@ public class PlayerMovement : MonoBehaviour
 
     [Header("Start Flow")]
     [SerializeField] private GameObject startPanel;
+    [SerializeField] private GameObject mapSelectionPanel;
+    [SerializeField] private Toggle tutorialMapToggle;
+    [SerializeField] private Toggle submarineMapToggle;
+    [SerializeField] private TextMeshProUGUI mapSelectionWarningText;
     private bool hasGameStarted;
+    private bool isWaitingForInitialMissionSelection;
 
     [Header("Movement Settings")]
     public float speed = 55f;
@@ -109,7 +115,9 @@ public class PlayerMovement : MonoBehaviour
     [Header("Sickle Settings")]
     public Transform sickleVisual;
     public float attackRange = 3.0f;
-    public float attackCooldown = 0.5f;
+    public float attackCooldown = 0.01f;
+    public float attackSwingInDuration = 0.025f;
+    public float attackSwingOutDuration = 0.04f;
     private bool isAttacking;
 
     void Start()
@@ -141,6 +149,12 @@ public class PlayerMovement : MonoBehaviour
             if (foundHelpPanel != null) helpPanel = foundHelpPanel;
         }
 
+        if (mapSelectionPanel == null)
+        {
+            GameObject foundMapSelectionPanel = GameObject.Find("MapSelectionPanel");
+            if (foundMapSelectionPanel != null) mapSelectionPanel = foundMapSelectionPanel;
+        }
+
         startPosition = transform.position;
         currentOxygen = maxOxygen;
 
@@ -152,6 +166,7 @@ public class PlayerMovement : MonoBehaviour
         if (upgradeScreen != null) upgradeScreen.SetActive(false);
         if (deathPanel != null) deathPanel.SetActive(false);
         if (helpPanel != null) helpPanel.SetActive(false);
+        if (mapSelectionPanel != null) mapSelectionPanel.SetActive(false);
 
         UpdateNozzleUI();
         UpdateOxygenWarningOverlay();
@@ -177,6 +192,22 @@ public class PlayerMovement : MonoBehaviour
         isMissionMenuOpen = MissionManager.Instance != null &&
                             MissionManager.Instance.mMenuPanel != null &&
                             MissionManager.Instance.mMenuPanel.activeSelf;
+
+        if (isWaitingForInitialMissionSelection)
+        {
+            if (MissionManager.Instance != null && MissionManager.Instance.HasAnyAcceptedMission)
+            {
+                isWaitingForInitialMissionSelection = false;
+            }
+            else
+            {
+                ForceOpenInitialMissionMenu();
+                UpdateCrouchCamera();
+                StopAllParticles();
+                if (waterAudioSource != null && waterAudioSource.isPlaying) waterAudioSource.Stop();
+                return;
+            }
+        }
 
         if (isDead)
         {
@@ -210,16 +241,91 @@ public class PlayerMovement : MonoBehaviour
     private void SetStartState()
     {
         hasGameStarted = false;
+        isWaitingForInitialMissionSelection = false;
         if (startPanel != null) startPanel.SetActive(true);
+        if (mapSelectionPanel != null) mapSelectionPanel.SetActive(false);
+        if (mapSelectionWarningText != null) mapSelectionWarningText.gameObject.SetActive(false);
         SetCursor(true);
     }
 
     public void StartGame()
     {
+        if (hasGameStarted) return;
+
+        BeginGameplay();
+        isWaitingForInitialMissionSelection = true;
+        ForceOpenInitialMissionMenu();
+    }
+
+    public void ConfirmMapSelectionAndStart()
+    {
+        bool tutorialSelected = tutorialMapToggle == null || tutorialMapToggle.isOn;
+        bool submarineSelected = submarineMapToggle == null || submarineMapToggle.isOn;
+
+        if (!tutorialSelected && !submarineSelected)
+        {
+            if (mapSelectionWarningText != null)
+            {
+                mapSelectionWarningText.text = "맵을 하나 이상 선택해야 합니다.";
+                mapSelectionWarningText.gameObject.SetActive(true);
+            }
+            return;
+        }
+
+        ApplySelectedMaps(tutorialSelected, submarineSelected);
+
+        if (mapSelectionWarningText != null) mapSelectionWarningText.gameObject.SetActive(false);
+        if (mapSelectionPanel != null) mapSelectionPanel.SetActive(false);
+
+        BeginGameplay();
+    }
+
+    public void BackToStartPanel()
+    {
+        if (mapSelectionPanel != null) mapSelectionPanel.SetActive(false);
+        if (startPanel != null) startPanel.SetActive(true);
+        if (mapSelectionWarningText != null) mapSelectionWarningText.gameObject.SetActive(false);
+        SetCursor(true);
+    }
+
+    private void BeginGameplay()
+    {
         hasGameStarted = true;
         isCursorUnlockedByEsc = false;
         if (startPanel != null) startPanel.SetActive(false);
+        if (mapSelectionPanel != null) mapSelectionPanel.SetActive(false);
         SetCursor(false);
+    }
+
+    private void ApplySelectedMaps(bool tutorialSelected, bool submarineSelected)
+    {
+        if (MissionManager.Instance == null) return;
+
+        if (MissionManager.Instance.tutorialJobCard != null)
+            MissionManager.Instance.tutorialJobCard.SetActive(tutorialSelected);
+
+        if (MissionManager.Instance.submarineJobCard != null)
+            MissionManager.Instance.submarineJobCard.SetActive(submarineSelected);
+
+        if (MissionManager.Instance.tutorialMapGroup != null)
+            MissionManager.Instance.tutorialMapGroup.SetActive(false);
+
+        if (MissionManager.Instance.submarineMapGroup != null)
+            MissionManager.Instance.submarineMapGroup.SetActive(false);
+    }
+
+    private void ForceOpenInitialMissionMenu()
+    {
+        if (MissionManager.Instance == null || MissionManager.Instance.mMenuPanel == null) return;
+
+        if (isUpgradeOpen) ToggleUpgrade();
+        if (isHelpOpen) SetHelpPanel(false);
+
+        MissionManager.Instance.mMenuPanel.SetActive(true);
+        MissionManager.Instance.ShowAvailableJobs();
+        isMissionMenuOpen = true;
+        isCursorUnlockedByEsc = false;
+        SetCursor(true);
     }
 
     private void HandleInputs()
@@ -289,17 +395,17 @@ public class PlayerMovement : MonoBehaviour
             Quaternion endRot = startRot * Quaternion.Euler(60, 0, 0);
 
             float elapsed = 0f;
-            while (elapsed < 0.1f)
+            while (elapsed < attackSwingInDuration)
             {
-                sickleVisual.localRotation = Quaternion.Slerp(startRot, endRot, elapsed / 0.1f);
+                sickleVisual.localRotation = Quaternion.Slerp(startRot, endRot, elapsed / attackSwingInDuration);
                 elapsed += Time.deltaTime;
                 yield return null;
             }
 
             elapsed = 0f;
-            while (elapsed < 0.2f)
+            while (elapsed < attackSwingOutDuration)
             {
-                sickleVisual.localRotation = Quaternion.Slerp(endRot, startRot, elapsed / 0.2f);
+                sickleVisual.localRotation = Quaternion.Slerp(endRot, startRot, elapsed / attackSwingOutDuration);
                 elapsed += Time.deltaTime;
                 yield return null;
             }
@@ -415,6 +521,11 @@ public class PlayerMovement : MonoBehaviour
     private void ToggleMissionMenu()
     {
         if (MissionManager.Instance == null || MissionManager.Instance.mMenuPanel == null) return;
+        if (isWaitingForInitialMissionSelection && !MissionManager.Instance.HasAnyAcceptedMission)
+        {
+            ForceOpenInitialMissionMenu();
+            return;
+        }
 
         GameObject menu = MissionManager.Instance.mMenuPanel;
         bool isActive = !menu.activeSelf;
@@ -613,6 +724,11 @@ public class PlayerMovement : MonoBehaviour
             MissionManager.Instance.mMenuPanel != null &&
             MissionManager.Instance.mMenuPanel.activeSelf)
         {
+            if (isWaitingForInitialMissionSelection && !MissionManager.Instance.HasAnyAcceptedMission)
+            {
+                ForceOpenInitialMissionMenu();
+                return;
+            }
             ToggleMissionMenu();
             return;
         }
@@ -628,6 +744,7 @@ public class PlayerMovement : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
             isCursorUnlockedByEsc = false;
             SetCursor(false);
         }

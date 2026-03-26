@@ -4,6 +4,8 @@ Shader "Custom/SubmarineEraser"
     {
         _DirtyTex ("Dirty Texture", 2D) = "white" {}
         _MaskTex ("Clean Mask", 2D) = "black" {}
+        _MossTint ("Moss Tint", Color) = (0.42, 0.52, 0.26, 1)
+        _MossStrength ("Moss Strength", Range(0, 1)) = 0.45
         _ScanColor ("Scan Color", Color) = (0, 1, 0, 1)
         _IsScanning ("Is Scanning", Float) = 0
     }
@@ -48,6 +50,8 @@ Shader "Custom/SubmarineEraser"
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _DirtyTex_ST;
+                float4 _MossTint;
+                float _MossStrength;
                 float4 _ScanColor;
                 float _IsScanning;
             CBUFFER_END
@@ -64,6 +68,10 @@ Shader "Custom/SubmarineEraser"
             {
                 half4 dirtyColor = SAMPLE_TEXTURE2D(_DirtyTex, sampler_DirtyTex, IN.uv);
                 float mask = SAMPLE_TEXTURE2D(_MaskTex, sampler_MaskTex, IN.uv).r;
+                half mossMask = saturate((dirtyColor.g * 1.25 + dirtyColor.r * 0.35) - dirtyColor.b * 0.2);
+
+                // Original dirt texture stays visible, but picks up a thin mossy olive tint.
+                dirtyColor.rgb = lerp(dirtyColor.rgb, dirtyColor.rgb * _MossTint.rgb, mossMask * _MossStrength);
 
                 if (_IsScanning > 0.5 && mask < 0.9)
                 {

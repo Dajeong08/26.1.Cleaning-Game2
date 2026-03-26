@@ -33,22 +33,26 @@ public class DirtPainter : MonoBehaviour
 
     public void Paint(Vector2 uv, float radius, float speed)
     {
+        // 물이 닿은 위치를 중심으로 마스크를 지움
         DrawCircle(uv, radius, speed);
 
+        // 텍스처 경계 부분까지 자연스럽게 닦이도록 보정
         if (uv.x < radius)
             DrawCircle(new Vector2(uv.x + 1.0f, uv.y), radius, speed);
         else if (uv.x > 1.0f - radius)
             DrawCircle(new Vector2(uv.x - 1.0f, uv.y), radius, speed);
 
+        // 수정된 마스크를 실제 텍스처에 반영
         templateMask.Apply();
 
-        // 0.15초마다 진행도 계산 (퍼포먼스 확보)
+        // 일정 시간마다만 진행도를 계산해서 성능 부담을 줄임
         if (Time.time >= nextUpdateTime)
         {
             UpdatePercentage();
             nextUpdateTime = Time.time + 0.15f;
         }
     }
+
 
     private void DrawCircle(Vector2 uv, float radius, float speed)
     {
@@ -78,20 +82,22 @@ public class DirtPainter : MonoBehaviour
 
     void UpdatePercentage()
     {
+        // 현재 마스크의 모든 픽셀을 가져옴
         Color[] pixels = templateMask.GetPixels();
         float whitePixels = 0;
 
+        // 충분히 닦인 픽셀 수를 셈
         for (int i = 0; i < pixels.Length; i++)
         {
             if (pixels[i].r > 0.9f) whitePixels++;
         }
 
+        // 전체 픽셀 대비 청소된 비율을 퍼센트로 계산
         float rawRatio = whitePixels / pixels.Length;
         float finalProgress = (rawRatio / targetThreshold) * 100f;
         finalProgress = Mathf.Clamp(finalProgress, 0f, 100f);
 
-        // --- ★ MissionManager 연동 부분 ★ ---
-        // 진행도에 변화가 있을 때만 MissionManager 호출
+        // 계산된 진행도를 MissionManager로 전달
         if (Mathf.Abs(lastProgress - finalProgress) > 0.1f)
         {
             lastProgress = finalProgress;
